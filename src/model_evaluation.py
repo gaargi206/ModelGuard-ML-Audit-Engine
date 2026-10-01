@@ -1,3 +1,4 @@
+
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
@@ -6,12 +7,25 @@ from sklearn.metrics import (
 
 
 def evaluate_classification_model(y_true, y_pred):
+    """
+    Evaluate a classification model.
+
+    Parameters:
+        y_true: Actual target values.
+        y_pred: Predicted target values.
+
+    Returns:
+        dict: Model evaluation metrics.
+    """
+
     accuracy = accuracy_score(y_true, y_pred)
+
     report = classification_report(
         y_true,
         y_pred,
         output_dict=True
     )
+
     cm = confusion_matrix(y_true, y_pred)
 
     return {
@@ -22,6 +36,10 @@ def evaluate_classification_model(y_true, y_pred):
 
 
 def summarize_model_evaluation(evaluation_results):
+    """
+    Extract key classification metrics.
+    """
+
     report = evaluation_results["classification_report"]
 
     return {
@@ -30,14 +48,3 @@ def summarize_model_evaluation(evaluation_results):
         "macro_recall": report["macro avg"]["recall"],
         "macro_f1": report["macro avg"]["f1-score"]
     }
-
-
-if __name__ == "__main__":
-    y_true = ["A", "A", "B", "B"]
-    y_pred = ["A", "B", "B", "B"]
-
-    results = evaluate_classification_model(
-        y_true,
-        y_pred
-    )
-    print(summarize_model_evaluation(results))

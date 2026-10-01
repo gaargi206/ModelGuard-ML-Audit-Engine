@@ -1,40 +1,24 @@
-# Virtual environment
-.venv/
-venv/
-env/
-
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
 
-# Jupyter Notebook
+# Jupyter / Colab
 .ipynb_checkpoints/
+*.ipynb_checkpoints
 
-# Streamlit
-.streamlit/secrets.toml
+# Environment files
+.env
+.venv/
+venv/
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-
 # Temporary files
 *.tmp
-*.log
+*.temp
 
-# Python distribution
-build/
-dist/
-*.egg-info/
-
-# Test/cache
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Generated reports
-*.html
+# Handoff package
+person1_ml_audit_engine_handoff.zip
