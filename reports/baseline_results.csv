@@ -1,0 +1,4 @@
+dataset,target,model,train_rows,test_rows,features,accuracy,macro_precision,macro_recall,macro_f1
+Adult / Census Income,income,Logistic Regression,26048,6513,14,0.855980346998311,0.8125442985611037,0.7753685953653453,0.7910315605181295
+Online Shoppers Purchasing Intention,Revenue,Logistic Regression,9864,2466,17,0.8811841038118411,0.8177082211355493,0.666734079649486,0.7071609071252414
+Predict Students' Dropout and Academic Success,Target,Logistic Regression,3539,885,36,0.768361581920904,0.7160998252087785,0.687170749245752,0.6961119865578466
