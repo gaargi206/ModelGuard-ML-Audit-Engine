@@ -1,404 +1,868 @@
 import streamlit as st
+
 import pandas
 
 
-# ============================================================
-# IMPORTS
-# ============================================================
 
 from src.report import generate_audit_report
 
+
+
 from src.data_quality_interface import (
+
     get_data_quality_summary,
+
     get_feature_risk_flags,
+
     detect_outliers,
+
     detect_strong_correlations,
+
     calculate_audit_score
+
 )
+
+
 
 from src.person1_data_quality_bridge import (
+
     run_person1_data_quality_audit,
+
     outliers_to_dataframe,
+
     missing_values_to_dataframe,
+
     target_distribution_to_dataframe
+
 )
+
+from src.person1_model_evaluation_bridge import (
+    run_person1_model_evaluation,
+    confusion_matrix_to_dataframe,
+    classification_report_to_dataframe
+)
+
+
 
 from src.model_interface import (
+
     evaluate_baseline_model,
+
     identify_model_risks
+
 )
+
+
 
 from src.fairness_interface import (
+
     get_group_columns,
+
     run_group_performance_audit,
+
     interpret_group_gap
+
 )
+
+
 
 from src.risk_interface import (
+
     detect_potential_leakage,
+
     interpret_leakage_results
+
 )
+
+
 
 from src.reproducibility import (
+
     get_reproducibility_info,
+
     get_model_configuration
+
 )
+
+
 
 from src.audit_summary import (
+
     generate_audit_summary,
+
     summary_to_dataframe
+
 )
+
+
 
 from src.risk_summary import (
+
     build_risk_summary
+
 )
+
+
 
 from src.dataset_loader import (
+
     load_csv_file,
+
     clean_dataset
+
 )
+
+
 
 from src.dataset_validation import (
+
     validate_dataset,
+
     get_validation_summary
+
 )
 
 
+
+
+
 # ============================================================
+
 # PAGE CONFIG
+
 # ============================================================
+
+
 
 st.set_page_config(
+
     page_title="ModelGuard — ML Model Risk Auditor",
+
     page_icon="🛡️",
+
     layout="wide"
+
 )
 
 
+
+
+
 # ============================================================
+
+# MODEL GUARD UI THEME
+# ============================================================
+st.markdown(
+    """
+    <style>
+    .stApp { background: #0B0F17; }
+
+    section[data-testid="stSidebar"] {
+        background: #151A24;
+        border-right: 1px solid #2A3140;
+    }
+
+    .block-container {
+        padding-top: 2rem;
+        padding-left: 3rem;
+        padding-right: 3rem;
+        max-width: 1450px;
+    }
+
+    h1 {
+        font-size: 3rem !important;
+        font-weight: 800 !important;
+        letter-spacing: -1px;
+    }
+
+    h2 {
+        font-weight: 750 !important;
+    }
+
+    div[data-testid="stMetric"] {
+        background: #151A24;
+        border: 1px solid #2A3140;
+        border-radius: 14px;
+        padding: 18px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.20);
+    }
+
+    div[data-testid="stMetricLabel"] { color: #9CA7B8; }
+    div[data-testid="stMetricValue"] { font-weight: 750; }
+
+    .stButton > button {
+        border-radius: 10px;
+        font-weight: 650;
+        border: 1px solid #394355;
+    }
+
+    div[data-testid="stExpander"] {
+        border: 1px solid #2A3140;
+        border-radius: 12px;
+        background: #111620;
+    }
+
+    div[data-testid="stDataFrame"] {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    div[data-testid="stSidebar"] div[role="radiogroup"] {
+        gap: 6px;
+    }
+
+    div[data-testid="stSidebar"] div[role="radiogroup"] label {
+        border-radius: 9px;
+        padding: 7px 10px;
+        transition: 0.2s ease;
+    }
+
+    div[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        background: #202735;
+    }
+
+    hr { border-color: #2A3140; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # HEADER
 # ============================================================
 
 st.title("🛡️ ModelGuard")
-
 st.caption(
-    "ML Model Risk Auditor — Data Quality • Model Performance • "
-    "Risk Detection • Fairness • Leakage • Reproducibility"
+    "ML Model Risk Auditor  •  Data Quality  •  Model Performance  •  "
+    "Risk Detection  •  Fairness  •  Leakage  •  Reproducibility"
 )
 
+# SESSION STATE
 
 # ============================================================
-# SESSION STATE
-# ============================================================
+
+
 
 if "model_metrics" not in st.session_state:
+
     st.session_state["model_metrics"] = None
 
+
+
 if "model_result" not in st.session_state:
+
     st.session_state["model_result"] = None
 
+
+
 if "fairness_result" not in st.session_state:
+
     st.session_state["fairness_result"] = None
 
+
+
 if "leakage_df" not in st.session_state:
+
     st.session_state["leakage_df"] = None
 
+
+
 if "validation_result" not in st.session_state:
+
     st.session_state["validation_result"] = None
 
+
+
 if "person1_data_quality" not in st.session_state:
+
     st.session_state["person1_data_quality"] = None
 
+if "person1_model_evaluation" not in st.session_state:
+    st.session_state["person1_model_evaluation"] = None
+
+
+
+
 
 # ============================================================
+
 # SIDEBAR
+
 # ============================================================
 
-st.sidebar.title("⚙️ ModelGuard")
 
-st.sidebar.subheader("Dataset Source")
 
-dataset_source = st.sidebar.radio(
-    "Choose dataset source",
-    [
-        "Built-in Dataset",
-        "Upload Custom CSV"
-    ]
+st.sidebar.markdown(
+    "<div style=\"padding:8px 0 22px 0;text-align:center;\"><div style=\"font-size:42px;margin-bottom:4px;\">🛡️</div><div style=\"font-size:27px;font-weight:800;letter-spacing:-0.5px;\">ModelGuard</div><div style=\"font-size:11px;color:#8F9BAD;margin-top:5px;letter-spacing:1px;text-transform:uppercase;\">ML Risk Auditor</div></div>",
+    unsafe_allow_html=True
 )
 
 
-# ============================================================
-# DATASET VARIABLES
+
+st.sidebar.markdown(
+    "<div style=\"font-size:11px;font-weight:700;color:#8F9BAD;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;\">DATASET</div>",
+    unsafe_allow_html=True
+)
+
+
+
+dataset_source = st.sidebar.radio(
+
+    "Choose dataset source",
+
+    [
+
+        "Built-in Dataset",
+
+        "Upload Custom CSV"
+
+    ]
+
+)
+
+
+
+
+
 # ============================================================
 
+# DATASET VARIABLES
+
+# ============================================================
+
+
+
 df = None
+
 dataset_name = None
+
 target_column = None
 
 
+
+
+
 # ============================================================
+
 # BUILT-IN DATASETS
+
 # ============================================================
+
+
 
 if dataset_source == "Built-in Dataset":
 
+
+
     dataset_option = st.sidebar.selectbox(
+
         "Select Dataset",
+
         [
+
             "Adult Census Income",
+
             "Online Shoppers Purchasing Intention",
+
             "Student Dropout & Academic Success"
+
         ]
+
     )
 
+
+
     # --------------------------------------------------------
+
     # ADULT
+
     # --------------------------------------------------------
+
+
 
     if dataset_option == "Adult Census Income":
 
+
+
         dataset_name = "Adult Census Income"
 
+
+
         columns = [
+
             "age",
+
             "workclass",
+
             "fnlwgt",
+
             "education",
+
             "education-num",
+
             "marital-status",
+
             "occupation",
+
             "relationship",
+
             "race",
+
             "sex",
+
             "capital-gain",
+
             "capital-loss",
+
             "hours-per-week",
+
             "native-country",
+
             "income"
+
         ]
+
+
 
         try:
 
+
+
             df = pandas.read_csv(
+
                 "data/adult.csv",
+
                 header=None,
+
                 names=columns,
+
                 skipinitialspace=True
+
             )
+
+
 
             if len(df) > 0:
 
+
+
                 first_row = (
+
                     df.iloc[0]
+
                     .astype(str)
+
                     .str.strip()
+
                     .str.lower()
+
                 )
+
+
 
                 if first_row["income"] == "income":
 
+
+
                     df = (
+
                         df.iloc[1:]
+
                         .reset_index(drop=True)
+
                     )
 
+
+
             df = df.replace(
+
                 "?",
+
                 pandas.NA
+
             )
+
+
 
             target_column = "income"
 
+
+
         except Exception as e:
 
+
+
             st.error(
+
                 f"Could not load Adult dataset: {e}"
+
             )
+
+
 
             st.stop()
 
 
+
+
+
     # --------------------------------------------------------
+
     # ONLINE SHOPPERS
+
     # --------------------------------------------------------
+
+
 
     elif dataset_option == "Online Shoppers Purchasing Intention":
 
+
+
         dataset_name = (
+
             "Online Shoppers Purchasing Intention"
+
         )
+
+
 
         try:
 
+
+
             df = pandas.read_csv(
+
                 "data/online_shoppers_intention.csv"
+
             )
+
+
 
             target_column = "Revenue"
 
+
+
         except Exception as e:
 
+
+
             st.error(
+
                 f"Could not load Online Shoppers dataset: {e}"
+
             )
+
+
 
             st.stop()
 
 
+
+
+
     # --------------------------------------------------------
+
     # STUDENT DROPOUT
+
     # --------------------------------------------------------
+
+
 
     elif dataset_option == "Student Dropout & Academic Success":
 
+
+
         dataset_name = (
+
             "Student Dropout & Academic Success"
+
         )
+
+
 
         try:
 
+
+
             df = pandas.read_csv(
+
                 "data/student_dropout.csv",
+
                 sep=";"
+
             )
+
+
 
             target_column = "Target"
 
+
+
         except Exception as e:
 
+
+
             st.error(
+
                 f"Could not load Student Dropout dataset: {e}"
+
             )
+
+
 
             st.stop()
 
 
+
+
+
 # ============================================================
+
 # CUSTOM CSV
+
 # ============================================================
+
+
 
 else:
 
+
+
     dataset_name = "Custom CSV Dataset"
 
+
+
     uploaded_file = st.sidebar.file_uploader(
+
         "Upload CSV Dataset",
+
         type=["csv"]
+
     )
+
+
 
     if uploaded_file is None:
 
+
+
         st.info(
+
             "👈 Upload a CSV file from the sidebar to begin the audit."
+
         )
+
+
 
         st.markdown(
+
             """
+
             ### What ModelGuard checks
 
-            - 🔎 Dataset Validation
+
+
             - 🧹 Data Quality
+
             - 🤖 Model Performance
-            - 🚨 Risk Detection
+
+            - ⚠️ Risk Detection
+
             - ⚖️ Group Performance
+
             - 🔐 Potential Data Leakage
+
             - 🔁 Reproducibility
-            - 📊 Audit Summary
+
             - 📄 Audit Report
+
             """
+
         )
 
+
+
         st.stop()
+
+
 
     try:
 
+
+
         df = load_csv_file(
+
             uploaded_file
+
         )
 
+
+
         df = clean_dataset(
+
             df
+
         )
+
+
 
     except Exception as e:
 
+
+
         st.error(
+
             str(e)
+
         )
+
+
 
         st.stop()
 
+
+
     target_column = st.sidebar.selectbox(
+
         "Select Target Column",
+
         df.columns.tolist()
+
     )
 
 
+
+
+
 # ============================================================
-# COMMON DATA CLEANING
+
+# COMMON CLEANING
+
 # ============================================================
+
+
 
 if df is None:
 
+
+
     st.error(
+
         "No dataset could be loaded."
+
     )
+
+
 
     st.stop()
 
 
+
+
+
 df.columns = [
+
     str(column).strip()
+
     for column in df.columns
+
 ]
 
 
+
+
+
 df = df.replace(
+
     [
+
         "?",
+
         "NA",
+
         "N/A",
+
         "na",
+
         "null",
+
         "NULL",
+
         "None"
+
     ],
+
     pandas.NA
+
 )
 
 
+
+
+
 df = df.dropna(
+
     subset=[target_column]
+
 ).reset_index(drop=True)
+
+
+
 
 
 if df[target_column].dtype == "object":
 
+
+
     df[target_column] = (
+
         df[target_column]
+
         .astype(str)
+
         .str.strip()
+
     )
 
+
+
     target_values_to_remove = [
+
         "income",
+
         "revenue",
+
         "target"
+
     ]
 
+
+
     df = df[
+
         ~df[target_column]
+
         .str.lower()
+
         .isin(target_values_to_remove)
+
     ].reset_index(drop=True)
 
 
-# ============================================================
-# DATASET VALIDATION ENGINE
+
+
+
 # ============================================================
 
+# DATASET VALIDATION
+
+# ============================================================
+
+
+
 validation_result = validate_dataset(
+
     df,
+
     target_column
 )
 
@@ -417,8 +881,21 @@ st.session_state[
 
 st.sidebar.divider()
 
-st.sidebar.subheader(
-    "Dataset Validation"
+st.sidebar.markdown(
+    """
+    <div style="
+        font-size:11px;
+        font-weight:700;
+        color:#8F9BAD;
+        letter-spacing:1px;
+        text-transform:uppercase;
+        margin-top:12px;
+        margin-bottom:8px;
+    ">
+        VALIDATION STATUS
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 if validation_result["valid"]:
@@ -501,11 +978,27 @@ if validation_result["warnings"]:
 
 st.sidebar.divider()
 
+st.sidebar.markdown(
+    """
+    <div style="
+        font-size:11px;
+        font-weight:700;
+        color:#8F9BAD;
+        letter-spacing:1px;
+        text-transform:uppercase;
+        margin-top:12px;
+        margin-bottom:8px;
+    ">
+        AUDIT MODULES
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 page = st.sidebar.radio(
-    "Navigation",
+    "",
     [
         "🏠 Overview",
-        "🔎 Dataset Validation",
         "🧠 Audit Summary",
         "🚨 Risk Findings",
         "🧹 Data Quality",
@@ -513,9 +1006,9 @@ page = st.sidebar.radio(
         "⚖️ Fairness",
         "🔐 Leakage",
         "🔁 Reproducibility",
-        "📄 Report",
-        "ℹ️ About"
-    ]
+        "📄 Report"
+    ],
+    label_visibility="collapsed"
 )
 
 
@@ -538,267 +1031,323 @@ audit_score = calculate_audit_score(
 
 if page == "🏠 Overview":
 
-    st.header(
-        "Dataset Overview"
-    )
+    # --------------------------------------------------------
+    # HEADER
+    # --------------------------------------------------------
 
-    col1, col2, col3, col4 = st.columns(4)
+    st.markdown(
+        """
+        <div style="padding:8px 0 20px 0;">
 
-    with col1:
+            <div style="
+                font-size:14px;
+                color:#8F9BAD;
+                letter-spacing:1px;
+                text-transform:uppercase;
+                font-weight:600;
+            ">
+                ML MODEL RISK AUDITOR
+            </div>
 
-        st.metric(
-            "Rows",
-            df.shape[0]
-        )
+            <div style="
+                font-size:34px;
+                font-weight:800;
+                margin-top:4px;
+            ">
+                Dataset Overview
+            </div>
 
-    with col2:
+            <div style="
+                font-size:15px;
+                color:#8F9BAD;
+                margin-top:6px;
+            ">
+                Review dataset health, structure and audit readiness.
+            </div>
 
-        st.metric(
-            "Columns",
-            df.shape[1]
-        )
-
-    with col3:
-
-        st.metric(
-            "Missing Cells",
-            int(
-                df.isna()
-                .sum()
-                .sum()
-            )
-        )
-
-    with col4:
-
-        st.metric(
-            "Audit Score",
-            f"{audit_score}/100"
-        )
-
-    st.divider()
-
-    st.subheader(
-        "Dataset Profile"
-    )
-
-    profile_col1, profile_col2, profile_col3 = st.columns(3)
-
-    with profile_col1:
-
-        st.write(
-            "**Dataset:**",
-            dataset_name
-        )
-
-        st.write(
-            "**Target:**",
-            target_column
-        )
-
-    with profile_col2:
-
-        st.write(
-            "**Numeric Columns:**",
-            len(
-                df.select_dtypes(
-                    include="number"
-                ).columns
-            )
-        )
-
-        st.write(
-            "**Categorical Columns:**",
-            len(
-                df.select_dtypes(
-                    exclude="number"
-                ).columns
-            )
-        )
-
-    with profile_col3:
-
-        st.write(
-            "**Duplicate Rows:**",
-            int(
-                df.duplicated()
-                .sum()
-            )
-        )
-
-        st.write(
-            "**Validation Status:**",
-            validation_summary["Status"]
-        )
-
-    st.divider()
-
-    st.subheader(
-        "Dataset Preview"
-    )
-
-    st.dataframe(
-        df.head(10),
-        width="stretch"
-    )
-
-    st.divider()
-
-    st.subheader(
-        "Target Distribution"
-    )
-
-    target_distribution = (
-        df[target_column]
-        .value_counts()
-        .reset_index()
-    )
-
-    target_distribution.columns = [
-        "Class",
-        "Count"
-    ]
-
-    st.dataframe(
-        target_distribution,
-        width="stretch"
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 
-# ============================================================
-# DATASET VALIDATION
-# ============================================================
-
-elif page == "🔎 Dataset Validation":
-
-    st.header(
-        "🔎 Dataset Validation"
-    )
-
-    st.write(
-        "ModelGuard validates the selected dataset before "
-        "running the machine learning audit."
-    )
-
-    st.subheader(
-        "Validation Status"
-    )
+    # --------------------------------------------------------
+    # VALIDATION STATUS
+    # --------------------------------------------------------
 
     if validation_result["valid"]:
 
         st.success(
-            "✅ Dataset passed validation."
+            "✓ Dataset validated successfully"
         )
 
     else:
 
         st.error(
-            "❌ Dataset failed validation."
+            "✕ Dataset validation failed"
         )
 
-    st.divider()
+
+    # --------------------------------------------------------
+    # KPI CARDS
+    # --------------------------------------------------------
+
+    rows = int(
+        df.shape[0]
+    )
+
+    columns = int(
+        df.shape[1]
+    )
+
+    missing_cells = int(
+        df.isna()
+        .sum()
+        .sum()
+    )
+
+    duplicate_rows = int(
+        df.duplicated()
+        .sum()
+    )
+
+
+    col1, col2, col3, col4 = st.columns(4)
+
+
+    with col1:
+
+        st.metric(
+            "ROWS",
+            f"{rows:,}"
+        )
+
+
+    with col2:
+
+        st.metric(
+            "COLUMNS",
+            columns
+        )
+
+
+    with col3:
+
+        st.metric(
+            "MISSING CELLS",
+            f"{missing_cells:,}"
+        )
+
+
+    with col4:
+
+        st.metric(
+            "AUDIT SCORE",
+            f"{audit_score}/100"
+        )
+
+
+    st.markdown(
+        "<br>",
+        unsafe_allow_html=True
+    )
+
+
+    # --------------------------------------------------------
+    # RISK OVERVIEW
+    # --------------------------------------------------------
 
     st.subheader(
-        "Validation Summary"
+        "Risk Overview"
     )
 
-    validation_table = pandas.DataFrame(
-        [
-            {
-                "Metric": "Status",
-                "Value": validation_summary["Status"]
-            },
-            {
-                "Metric": "Issues",
-                "Value": validation_summary["Issues"]
-            },
-            {
-                "Metric": "Warnings",
-                "Value": validation_summary["Warnings"]
-            }
-        ]
-    )
 
-    st.dataframe(
-        validation_table,
-        width="stretch"
-    )
+    risk_col1, risk_col2, risk_col3 = st.columns(3)
 
-    if validation_result["issues"]:
 
-        st.subheader(
-            "Validation Issues"
-        )
+    with risk_col1:
 
-        for issue in validation_result["issues"]:
+        if audit_score >= 80:
 
-            st.error(
-                f"• {issue}"
+            st.success(
+                "🟢 Data Quality\n\n"
+                "Low screening risk"
             )
 
-    if validation_result["warnings"]:
-
-        st.subheader(
-            "Validation Warnings"
-        )
-
-        for warning in validation_result["warnings"]:
+        elif audit_score >= 60:
 
             st.warning(
-                f"• {warning}"
+                "🟡 Data Quality\n\n"
+                "Review recommended"
             )
 
-    if (
-        not validation_result["issues"]
-        and not validation_result["warnings"]
-    ):
+        else:
 
-        st.success(
-            "No validation issues or warnings were detected."
+            st.error(
+                "🔴 Data Quality\n\n"
+                "Potential risk"
+            )
+
+
+    with risk_col2:
+
+        if st.session_state.get(
+            "model_metrics"
+        ):
+
+            metrics = st.session_state[
+                "model_metrics"
+            ]
+
+            accuracy = metrics.get(
+                "Accuracy"
+            )
+
+            if (
+                accuracy is not None
+                and accuracy >= 0.70
+            ):
+
+                st.success(
+                    f"🟢 Model Performance\n\n"
+                    f"Accuracy: {accuracy:.1%}"
+                )
+
+            else:
+
+                st.warning(
+                    "🟡 Model Performance\n\n"
+                    "Review required"
+                )
+
+        else:
+
+            st.info(
+                "🔵 Model Performance\n\n"
+                "Not evaluated yet"
+            )
+
+
+    with risk_col3:
+
+        fairness_result = st.session_state.get(
+            "fairness_result"
         )
 
-    st.divider()
+        if fairness_result:
+
+            max_gap = fairness_result.get(
+                "max_gap"
+            )
+
+            if (
+                max_gap is not None
+                and max_gap >= 0.20
+            ):
+
+                st.warning(
+                    f"🟡 Fairness\n\n"
+                    f"Gap: {max_gap:.1%}"
+                )
+
+            else:
+
+                st.success(
+                    "🟢 Fairness\n\n"
+                    "No large gap detected"
+                )
+
+        else:
+
+            st.info(
+                "🔵 Fairness\n\n"
+                "Not evaluated yet"
+            )
+
+
+    st.markdown(
+        "<br>",
+        unsafe_allow_html=True
+    )
+
+
+    # --------------------------------------------------------
+    # DATASET INFORMATION
+    # --------------------------------------------------------
 
     st.subheader(
         "Dataset Information"
     )
 
-    validation_info = pandas.DataFrame(
-        [
-            {
-                "Property": "Rows",
-                "Value": int(df.shape[0])
-            },
-            {
-                "Property": "Columns",
-                "Value": int(df.shape[1])
-            },
-            {
-                "Property": "Target Column",
-                "Value": target_column
-            },
-            {
-                "Property": "Missing Cells",
-                "Value": int(
-                    df.isna()
-                    .sum()
-                    .sum()
-                )
-            },
-            {
-                "Property": "Duplicate Rows",
-                "Value": int(
-                    df.duplicated()
-                    .sum()
-                )
-            }
-        ]
+
+    info_col1, info_col2 = st.columns(2)
+
+
+    with info_col1:
+
+        st.markdown(
+            f"""
+            **Dataset**
+
+            `{dataset_name}`
+
+            **Target**
+
+            `{target_column}`
+            """
+        )
+
+
+    with info_col2:
+
+        numeric_count = len(
+            df.select_dtypes(
+                include="number"
+            ).columns
+        )
+
+        categorical_count = len(
+            df.select_dtypes(
+                exclude="number"
+            ).columns
+        )
+
+        st.markdown(
+            f"""
+            **Numeric Features**
+
+            `{numeric_count}`
+
+            **Categorical Features**
+
+            `{categorical_count}`
+
+            **Duplicate Rows**
+
+            `{duplicate_rows:,}`
+            """
+        )
+
+
+    st.markdown(
+        "<br>",
+        unsafe_allow_html=True
     )
 
-    st.dataframe(
-        validation_info,
-        width="stretch"
-    )
+
+    # --------------------------------------------------------
+    # DATASET PREVIEW
+    # --------------------------------------------------------
+
+    with st.expander(
+        "📊 Preview Dataset",
+        expanded=False
+    ):
+
+        st.dataframe(
+            df.head(10),
+            width="stretch"
+        )
 
 
 # ============================================================
@@ -811,30 +1360,6 @@ elif page == "🧠 Audit Summary":
         "🧠 Audit Summary"
     )
 
-    st.write(
-        "ModelGuard combines the available audit indicators "
-        "into a consolidated screening summary."
-    )
-
-    try:
-
-        leakage_df = detect_potential_leakage(
-            df,
-            target_column
-        )
-
-        st.session_state[
-            "leakage_df"
-        ] = leakage_df
-
-    except Exception:
-
-        leakage_df = pandas.DataFrame()
-
-        st.session_state[
-            "leakage_df"
-        ] = leakage_df
-
     summary = generate_audit_summary(
         df=df,
         target_column=target_column,
@@ -843,93 +1368,12 @@ elif page == "🧠 Audit Summary":
         model_metrics=st.session_state.get(
             "model_metrics"
         ),
-        leakage_df=leakage_df,
+        leakage_df=st.session_state.get(
+            "leakage_df"
+        ),
         fairness_result=st.session_state.get(
             "fairness_result"
         )
-    )
-
-    risk_status = summary.get(
-        "Risk Status",
-        {}
-    )
-
-    st.subheader(
-        "Risk Status"
-    )
-
-    status_cols = st.columns(4)
-
-    sections = [
-        "Overall",
-        "Data Quality",
-        "Leakage",
-        "Fairness"
-    ]
-
-    for index, section in enumerate(sections):
-
-        with status_cols[index]:
-
-            status = risk_status.get(
-                section,
-                "Not Evaluated"
-            )
-
-            st.metric(
-                section,
-                status
-            )
-
-    st.divider()
-
-    st.subheader(
-        "Key Audit Metrics"
-    )
-
-    metric_col1, metric_col2, metric_col3, metric_col4 = (
-        st.columns(4)
-    )
-
-    with metric_col1:
-
-        st.metric(
-            "Audit Score",
-            f"{audit_score}/100"
-        )
-
-    with metric_col2:
-
-        st.metric(
-            "Missing Cells",
-            int(
-                df.isna()
-                .sum()
-                .sum()
-            )
-        )
-
-    with metric_col3:
-
-        st.metric(
-            "Duplicate Rows",
-            int(
-                df.duplicated()
-                .sum()
-            )
-        )
-
-    with metric_col4:
-
-        st.metric(
-            "Potential Leakage Indicators",
-            len(leakage_df)
-        )
-
-    st.divider()
-
-    st.subheader(
-        "Audit Summary Table"
     )
 
     summary_df = summary_to_dataframe(
@@ -952,101 +1396,32 @@ elif page == "🚨 Risk Findings":
         "🚨 Risk Findings"
     )
 
-    leakage_df = st.session_state.get(
-        "leakage_df"
-    )
-
-    if leakage_df is None:
-
-        try:
-
-            leakage_df = detect_potential_leakage(
-                df,
-                target_column
-            )
-
-        except Exception:
-
-            leakage_df = pandas.DataFrame()
-
-        st.session_state[
-            "leakage_df"
-        ] = leakage_df
-
-    risk_summary = build_risk_summary(
+    risk_df = build_risk_summary(
         df=df,
         quality_summary=quality_summary,
         model_metrics=st.session_state.get(
             "model_metrics"
         ),
-        leakage_df=leakage_df,
+        leakage_df=st.session_state.get(
+            "leakage_df"
+        ),
         fairness_result=st.session_state.get(
             "fairness_result"
         )
     )
 
-    risk_count = len(
-        risk_summary
-    )
+    if risk_df.empty:
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        st.metric(
-            "Total Findings",
-            risk_count
+        st.success(
+            "No screening findings were generated."
         )
 
-    with col2:
+    else:
 
-        potential_risks = (
-            risk_summary[
-                risk_summary["Severity"]
-                == "Potential Risk"
-            ]
-            .shape[0]
-        )
-
-        st.metric(
-            "Potential Risks",
-            potential_risks
-        )
-
-    with col3:
-
-        review_items = (
-            risk_summary[
-                risk_summary["Severity"]
-                == "Review"
-            ]
-            .shape[0]
-        )
-
-        st.metric(
-            "Items for Review",
-            review_items
-        )
-
-    st.divider()
-
-    st.subheader(
-        "Risk Findings"
-    )
-
-    st.dataframe(
-        risk_summary,
-        width="stretch"
-    )
-
-    st.info(
-        "Risk findings are screening indicators. "
-        "They do not establish that a model is unsafe, "
-        "biased, or affected by leakage without further investigation."
-    )
-
-
-# ============================================================
+        st.dataframe(
+            risk_df,
+            width="stretch"
+        )# ============================================================
 # DATA QUALITY
 # ============================================================
 
@@ -1056,13 +1431,20 @@ elif page == "🧹 Data Quality":
         "🧹 Data Quality Audit"
     )
 
+    st.write(
+        "ModelGuard checks missing values, duplicates, "
+        "outliers, feature risks and strong correlations."
+    )
+
+    # --------------------------------------------------------
+    # PERSON 1 DATA QUALITY ENGINE
+    # --------------------------------------------------------
+
     try:
 
-        person1_result = (
-            run_person1_data_quality_audit(
-                df=df,
-                target_column=target_column
-            )
+        person1_result = run_person1_data_quality_audit(
+            df=df,
+            target_column=target_column
         )
 
         st.session_state[
@@ -1071,268 +1453,82 @@ elif page == "🧹 Data Quality":
 
     except Exception as e:
 
-        st.error(
-            f"Person 1 Data Quality Engine failed: {e}"
+        st.warning(
+            f"Person 1 Data Quality Engine could not run: {e}"
         )
 
         person1_result = None
+
 
     # --------------------------------------------------------
     # TOP METRICS
     # --------------------------------------------------------
 
-    if person1_result is not None:
+    col1, col2, col3, col4 = st.columns(4)
 
-        col1, col2, col3, col4 = st.columns(4)
+    with col1:
 
-        with col1:
+        st.metric(
+            "ROWS",
+            f"{len(df):,}"
+        )
 
-            st.metric(
-                "Missing Cells",
-                person1_result["missing_cells"]
-            )
+    with col2:
 
-        with col2:
+        st.metric(
+            "COLUMNS",
+            len(df.columns)
+        )
 
-            st.metric(
-                "Duplicate Rows",
-                person1_result["duplicate_count"]
-            )
+    with col3:
 
-        with col3:
+        st.metric(
+            "MISSING CELLS",
+            f"{int(df.isna().sum().sum()):,}"
+        )
 
-            st.metric(
-                "Rows",
-                person1_result["rows"]
-            )
+    with col4:
 
-        with col4:
+        st.metric(
+            "DUPLICATE ROWS",
+            f"{int(df.duplicated().sum()):,}"
+        )
 
-            st.metric(
-                "Columns",
-                person1_result["columns"]
-            )
-
-    else:
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-
-            st.metric(
-                "Missing Cells",
-                int(
-                    df.isna()
-                    .sum()
-                    .sum()
-                )
-            )
-
-        with col2:
-
-            st.metric(
-                "Duplicate Rows",
-                int(
-                    df.duplicated()
-                    .sum()
-                )
-            )
-
-        with col3:
-
-            st.metric(
-                "Audit Score",
-                f"{audit_score}/100"
-            )
 
     st.divider()
+
 
     # --------------------------------------------------------
     # MISSING VALUES
     # --------------------------------------------------------
 
     st.subheader(
-        "Missing Values — ML Audit Engine"
+        "Missing Values"
     )
 
-    if person1_result is not None:
-
-        person1_missing = (
-            missing_values_to_dataframe(
-                person1_result[
-                    "missing_values"
-                ]
-            )
-        )
-
-        if person1_missing.empty:
-
-            st.success(
-                "No missing values detected."
-            )
-
-        else:
-
-            st.dataframe(
-                person1_missing,
-                width="stretch"
-            )
-
-    else:
-
-        missing_data = (
-            df.isna()
-            .sum()
-            .sort_values(
-                ascending=False
-            )
-        )
-
-        missing_table = pandas.DataFrame({
-            "Feature": missing_data.index,
-            "Missing Values": missing_data.values,
-            "Missing %": (
-                missing_data.values
-                /
-                max(len(df), 1)
-                *
-                100
-            ).round(2)
-        })
-
-        st.dataframe(
-            missing_table,
-            width="stretch"
-        )
-
-    # --------------------------------------------------------
-    # DUPLICATES
-    # --------------------------------------------------------
-
-    st.subheader(
-        "Duplicate Records"
-    )
-
-    duplicate_count = int(
-        df.duplicated()
+    missing_table = (
+        df.isna()
         .sum()
-    )
-
-    duplicate_percentage = (
-        duplicate_count
-        /
-        max(len(df), 1)
-        *
-        100
-    )
-
-    st.write(
-        f"**Duplicate rows:** {duplicate_count}"
-    )
-
-    st.write(
-        f"**Duplicate percentage:** "
-        f"{duplicate_percentage:.2f}%"
-    )
-
-    # --------------------------------------------------------
-    # TARGET DISTRIBUTION
-    # --------------------------------------------------------
-
-    st.subheader(
-        "Target Distribution"
-    )
-
-    if person1_result is not None:
-
-        target_table = (
-            target_distribution_to_dataframe(
-                person1_result[
-                    "target_distribution"
-                ]
-            )
+        .sort_values(
+            ascending=False
         )
-
-        if target_table.empty:
-
-            st.info(
-                "Target distribution is unavailable."
-            )
-
-        else:
-
-            st.dataframe(
-                target_table,
-                width="stretch"
-            )
-
-    else:
-
-        target_table = (
-            df[target_column]
-            .value_counts()
-            .reset_index()
-        )
-
-        target_table.columns = [
-            "Class",
-            "Count"
-        ]
-
-        st.dataframe(
-            target_table,
-            width="stretch"
-        )
-
-    # --------------------------------------------------------
-    # OUTLIERS
-    # --------------------------------------------------------
-
-    st.subheader(
-        "Outlier Analysis"
     )
 
-    if person1_result is not None:
+    missing_df = pandas.DataFrame({
+        "Feature": missing_table.index,
+        "Missing Values": missing_table.values,
+        "Missing %": (
+            missing_table.values
+            / max(len(df), 1)
+            * 100
+        ).round(2)
+    })
 
-        person1_outliers = (
-            outliers_to_dataframe(
-                person1_result[
-                    "outliers"
-                ]
-            )
-        )
+    st.dataframe(
+        missing_df,
+        width="stretch"
+    )
 
-        if person1_outliers.empty:
-
-            st.info(
-                "No outlier results were generated."
-            )
-
-        else:
-
-            st.dataframe(
-                person1_outliers,
-                width="stretch"
-            )
-
-    else:
-
-        outliers = detect_outliers(
-            df
-        )
-
-        if outliers.empty:
-
-            st.info(
-                "No outlier results were generated."
-            )
-
-        else:
-
-            st.dataframe(
-                outliers,
-                width="stretch"
-            )
 
     # --------------------------------------------------------
     # FEATURE RISK FLAGS
@@ -1342,16 +1538,14 @@ elif page == "🧹 Data Quality":
         "Feature Risk Flags"
     )
 
-    feature_risks = (
-        get_feature_risk_flags(
-            df
-        )
+    feature_risks = get_feature_risk_flags(
+        df
     )
 
     if feature_risks.empty:
 
         st.success(
-            "No feature-level risk flags detected."
+            "No feature-level screening risks detected."
         )
 
     else:
@@ -1361,6 +1555,34 @@ elif page == "🧹 Data Quality":
             width="stretch"
         )
 
+
+    # --------------------------------------------------------
+    # OUTLIERS
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Outlier Detection"
+    )
+
+    outlier_df = detect_outliers(
+        df
+    )
+
+    if outlier_df.empty:
+
+        st.info(
+            "No numeric columns were available "
+            "for outlier analysis."
+        )
+
+    else:
+
+        st.dataframe(
+            outlier_df,
+            width="stretch"
+        )
+
+
     # --------------------------------------------------------
     # STRONG CORRELATIONS
     # --------------------------------------------------------
@@ -1369,17 +1591,15 @@ elif page == "🧹 Data Quality":
         "Strong Correlations"
     )
 
-    correlations = (
-        detect_strong_correlations(
-            df
-        )
+    correlations = detect_strong_correlations(
+        df
     )
 
     if correlations.empty:
 
         st.info(
             "No strong numeric correlations detected "
-            "under the current threshold."
+            "under the current screening threshold."
         )
 
     else:
@@ -1389,53 +1609,48 @@ elif page == "🧹 Data Quality":
             width="stretch"
         )
 
-    # --------------------------------------------------------
-    # CORRELATION MATRIX
-    # --------------------------------------------------------
-
-    numeric_columns = (
-        df.select_dtypes(
-            include="number"
-        )
-        .columns
-        .tolist()
-    )
-
-    if len(numeric_columns) >= 2:
-
-        st.subheader(
-            "Correlation Matrix"
-        )
-
-        correlation_matrix = (
-            df[numeric_columns]
-            .corr()
-        )
-
-        st.dataframe(
-            correlation_matrix,
-            width="stretch"
-        )
 
     # --------------------------------------------------------
-    # AUDIT SCORE
+    # PRELIMINARY SCORE
     # --------------------------------------------------------
-
-    st.divider()
 
     st.subheader(
-        "Preliminary Audit Score"
+        "Preliminary Data Quality Score"
     )
 
-    st.metric(
-        "Data Quality Score",
-        f"{audit_score}/100"
+    score_col1, score_col2 = st.columns(
+        [1, 2]
     )
 
-    st.caption(
-        "This is a preliminary screening score based on "
-        "missingness and duplicate indicators."
-    )
+    with score_col1:
+
+        st.metric(
+            "Audit Score",
+            f"{audit_score}/100"
+        )
+
+    with score_col2:
+
+        if audit_score >= 80:
+
+            st.success(
+                "Low screening concern based on "
+                "the current preliminary score."
+            )
+
+        elif audit_score >= 60:
+
+            st.warning(
+                "Some data-quality indicators "
+                "should be reviewed."
+            )
+
+        else:
+
+            st.error(
+                "Significant data-quality indicators "
+                "require investigation."
+            )
 
 
 # ============================================================
@@ -1452,6 +1667,11 @@ elif page == "🤖 Model Evaluation":
         "ModelGuard trains a baseline Logistic Regression "
         "model using an automated preprocessing pipeline."
     )
+
+
+    # --------------------------------------------------------
+    # TARGET DISTRIBUTION
+    # --------------------------------------------------------
 
     st.subheader(
         "Target Distribution"
@@ -1481,6 +1701,7 @@ elif page == "🤖 Model Evaluation":
         width="stretch"
     )
 
+
     largest_class_percentage = (
         target_percentages.max()
         if not target_percentages.empty
@@ -1495,6 +1716,11 @@ elif page == "🤖 Model Evaluation":
             "Accuracy should therefore be interpreted alongside "
             "precision, recall, and F1."
         )
+
+
+    # --------------------------------------------------------
+    # MODEL BUTTON
+    # --------------------------------------------------------
 
     if st.button(
         "▶️ Run Baseline Model",
@@ -1526,17 +1752,24 @@ elif page == "🤖 Model Evaluation":
                 f"Model evaluation failed: {e}"
             )
 
+
     model_result = (
         st.session_state.get(
             "model_result"
         )
     )
 
+
     if model_result is not None:
 
         metrics = model_result[
             "metrics"
         ]
+
+
+        # ----------------------------------------------------
+        # METRICS
+        # ----------------------------------------------------
 
         st.divider()
 
@@ -1562,17 +1795,20 @@ elif page == "🤖 Model Evaluation":
                     f"{metric_value:.3f}"
                 )
 
+
+        # ----------------------------------------------------
+        # CONFUSION MATRIX
+        # ----------------------------------------------------
+
         st.divider()
 
         st.subheader(
             "Confusion Matrix"
         )
 
-        confusion_matrix = (
-            model_result[
-                "confusion_matrix"
-            ]
-        )
+        confusion_matrix = model_result[
+            "confusion_matrix"
+        ]
 
         st.dataframe(
             pandas.DataFrame(
@@ -1580,6 +1816,11 @@ elif page == "🤖 Model Evaluation":
             ),
             width="stretch"
         )
+
+
+        # ----------------------------------------------------
+        # MODEL RISK SCREENING
+        # ----------------------------------------------------
 
         st.subheader(
             "Model Risk Screening"
@@ -1626,10 +1867,12 @@ elif page == "⚖️ Fairness":
         "indicator and does not by itself establish unfairness."
     )
 
+
     group_columns = get_group_columns(
         df,
         target_column
     )
+
 
     if not group_columns:
 
@@ -1644,6 +1887,7 @@ elif page == "⚖️ Fairness":
             "Select Group Column",
             group_columns
         )
+
 
         if st.button(
             "⚖️ Run Group Performance Audit"
@@ -1673,31 +1917,28 @@ elif page == "⚖️ Fairness":
                     f"Fairness audit failed: {e}"
                 )
 
+
         fairness_result = (
             st.session_state.get(
                 "fairness_result"
             )
         )
 
+
         if fairness_result is not None:
 
-            group_results = (
-                fairness_result[
-                    "group_results"
-                ]
-            )
+            group_results = fairness_result[
+                "group_results"
+            ]
 
-            gap_results = (
-                fairness_result[
-                    "gap_results"
-                ]
-            )
+            gap_results = fairness_result[
+                "gap_results"
+            ]
 
-            max_gap = (
-                fairness_result[
-                    "max_gap"
-                ]
-            )
+            max_gap = fairness_result[
+                "max_gap"
+            ]
+
 
             if not group_results.empty:
 
@@ -1710,6 +1951,7 @@ elif page == "⚖️ Fairness":
                     width="stretch"
                 )
 
+
             if not gap_results.empty:
 
                 st.subheader(
@@ -1719,17 +1961,6 @@ elif page == "⚖️ Fairness":
                 st.dataframe(
                     gap_results,
                     width="stretch"
-                )
-
-            if max_gap is not None:
-
-                st.subheader(
-                    "Maximum Group Gap"
-                )
-
-                st.metric(
-                    "Maximum Gap",
-                    f"{max_gap:.3f}"
                 )
 
                 st.subheader(
@@ -1760,6 +1991,7 @@ elif page == "🔐 Leakage":
         "of data leakage."
     )
 
+
     if st.button(
         "🔍 Run Leakage Scan"
     ):
@@ -1787,11 +2019,13 @@ elif page == "🔐 Leakage":
                 f"Leakage scan failed: {e}"
             )
 
+
     leakage_df = (
         st.session_state.get(
             "leakage_df"
         )
     )
+
 
     if leakage_df is not None:
 
@@ -1819,10 +2053,7 @@ elif page == "🔐 Leakage":
 
         st.info(
             "Click **Run Leakage Scan** to begin."
-        )
-
-
-# ============================================================
+        )# ============================================================
 # REPRODUCIBILITY
 # ============================================================
 
@@ -1833,108 +2064,93 @@ elif page == "🔁 Reproducibility":
     )
 
     st.write(
-        "ModelGuard records environment and model "
-        "configuration information that can support "
-        "repeated experiments."
+        "ModelGuard records the configuration and environment "
+        "information needed to help reproduce the audit."
     )
 
-    reproducibility_info = (
-        get_reproducibility_info(
-            dataset_name,
-            target_column
+    try:
+
+        reproducibility_info = get_reproducibility_info()
+
+        st.subheader(
+            "Environment Information"
         )
-    )
 
-    st.subheader(
-        "Environment Information"
-    )
+        if isinstance(
+            reproducibility_info,
+            dict
+        ):
 
-    if isinstance(
-        reproducibility_info,
-        list
-    ):
+            reproducibility_df = pandas.DataFrame(
+                [
+                    {
+                        "Property": key,
+                        "Value": value
+                    }
+                    for key, value
+                    in reproducibility_info.items()
+                ]
+            )
 
-        st.dataframe(
-            pandas.DataFrame(
+            st.dataframe(
+                reproducibility_df,
+                width="stretch"
+            )
+
+        else:
+
+            st.write(
                 reproducibility_info
-            ),
-            width="stretch"
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"Could not collect reproducibility information: {e}"
         )
 
-    elif isinstance(
-        reproducibility_info,
-        dict
-    ):
-
-        environment_df = pandas.DataFrame(
-            [
-                {
-                    "Parameter": key,
-                    "Value": value
-                }
-                for key, value
-                in reproducibility_info.items()
-            ]
-        )
-
-        st.dataframe(
-            environment_df,
-            width="stretch"
-        )
-
-    else:
-
-        st.write(
-            reproducibility_info
-        )
 
     st.divider()
 
     st.subheader(
-        "Baseline Model Configuration"
+        "Model Configuration"
     )
 
-    model_configuration = (
-        get_model_configuration()
-    )
+    try:
 
-    if isinstance(
-        model_configuration,
-        list
-    ):
+        model_configuration = get_model_configuration()
 
-        st.dataframe(
-            pandas.DataFrame(
+        if isinstance(
+            model_configuration,
+            dict
+        ):
+
+            configuration_df = pandas.DataFrame(
+                [
+                    {
+                        "Parameter": key,
+                        "Value": value
+                    }
+                    for key, value
+                    in model_configuration.items()
+                ]
+            )
+
+            st.dataframe(
+                configuration_df,
+                width="stretch"
+            )
+
+        else:
+
+            st.write(
                 model_configuration
-            ),
-            width="stretch"
-        )
+            )
 
-    elif isinstance(
-        model_configuration,
-        dict
-    ):
+    except Exception as e:
 
-        model_df = pandas.DataFrame(
-            [
-                {
-                    "Parameter": key,
-                    "Value": value
-                }
-                for key, value
-                in model_configuration.items()
-            ]
-        )
-
-        st.dataframe(
-            model_df,
-            width="stretch"
-        )
-
-    else:
-
-        st.write(
-            model_configuration
+        st.error(
+            f"Could not collect model configuration: {e}"
         )
 
 
@@ -1945,58 +2161,189 @@ elif page == "🔁 Reproducibility":
 elif page == "📄 Report":
 
     st.header(
-        "📄 Audit Report"
+        "📄 ModelGuard Audit Report"
     )
 
     st.write(
-        "Generate a standalone HTML report containing "
-        "the current dataset audit information."
+        "Generate a consolidated HTML report containing "
+        "the available ModelGuard audit results."
     )
 
-    reproducibility_info = (
-        get_reproducibility_info(
-            dataset_name,
-            target_column
-        )
+
+    leakage_df = st.session_state.get(
+        "leakage_df"
     )
+
+    fairness_result = st.session_state.get(
+        "fairness_result"
+    )
+
+    model_metrics = st.session_state.get(
+        "model_metrics"
+    )
+
+
+    if leakage_df is None:
+
+        try:
+
+            leakage_df = detect_potential_leakage(
+                df,
+                target_column
+            )
+
+        except Exception:
+
+            leakage_df = pandas.DataFrame()
+
+
+    risk_summary = build_risk_summary(
+        df=df,
+        quality_summary=quality_summary,
+        model_metrics=model_metrics,
+        leakage_df=leakage_df,
+        fairness_result=fairness_result
+    )
+
+
+    audit_summary = generate_audit_summary(
+        df=df,
+        target_column=target_column,
+        audit_score=audit_score,
+        quality_summary=quality_summary,
+        model_metrics=model_metrics,
+        leakage_df=leakage_df,
+        fairness_result=fairness_result
+    )
+
+
+    st.subheader(
+        "Report Contents"
+    )
+
+    report_col1, report_col2 = st.columns(2)
+
+    with report_col1:
+
+        st.markdown(
+            """
+            ✓ Dataset information
+
+            ✓ Data quality findings
+
+            ✓ Model performance
+
+            ✓ Risk indicators
+            """
+        )
+
+    with report_col2:
+
+        st.markdown(
+            """
+            ✓ Fairness results
+
+            ✓ Leakage screening
+
+            ✓ Audit summary
+
+            ✓ Risk findings
+            """
+        )
+
+
+    st.divider()
+
 
     if st.button(
-        "📄 Generate Audit Report",
+        "📄 Generate HTML Report",
         type="primary"
     ):
 
         try:
 
-            report_html = (
-                generate_audit_report(
-                    dataset_name=dataset_name,
-                    df=df,
-                    target_column=target_column,
-                    audit_score=audit_score,
-                    reproducibility_info=reproducibility_info
-                )
+            report_path = generate_audit_report(
+                df=df,
+                target_column=target_column,
+                audit_score=audit_score,
+                quality_summary=quality_summary,
+                model_metrics=model_metrics,
+                leakage_df=leakage_df,
+                fairness_result=fairness_result,
+                risk_summary=risk_summary,
+                audit_summary=audit_summary
             )
 
             st.success(
-                "Audit report generated successfully."
+                "HTML audit report generated successfully."
             )
 
-            st.download_button(
-                label="⬇️ Download HTML Report",
-                data=report_html,
-                file_name="modelguard_audit_report.html",
-                mime="text/html"
-            )
 
-            st.subheader(
-                "Report Preview"
-            )
+            try:
 
-            st.components.v1.html(
-                report_html,
-                height=700,
-                scrolling=True
-            )
+                with open(
+                    report_path,
+                    "rb"
+                ) as report_file:
+
+                    st.download_button(
+                        "⬇️ Download Audit Report",
+                        data=report_file,
+                        file_name="modelguard_audit_report.html",
+                        mime="text/html"
+                    )
+
+            except Exception as download_error:
+
+                st.warning(
+                    f"Report was generated, but the download "
+                    f"button could not be prepared: {download_error}"
+                )
+
+        except TypeError:
+
+            try:
+
+                report_path = generate_audit_report(
+                    df,
+                    target_column,
+                    audit_score,
+                    quality_summary,
+                    model_metrics,
+                    leakage_df,
+                    fairness_result
+                )
+
+                st.success(
+                    "HTML audit report generated successfully."
+                )
+
+                try:
+
+                    with open(
+                        report_path,
+                        "rb"
+                    ) as report_file:
+
+                        st.download_button(
+                            "⬇️ Download Audit Report",
+                            data=report_file,
+                            file_name="modelguard_audit_report.html",
+                            mime="text/html"
+                        )
+
+                except Exception as download_error:
+
+                    st.warning(
+                        f"Report was generated, but the download "
+                        f"button could not be prepared: {download_error}"
+                    )
+
+            except Exception as e:
+
+                st.error(
+                    f"Report generation failed: {e}"
+                )
 
         except Exception as e:
 
@@ -2006,79 +2353,25 @@ elif page == "📄 Report":
 
 
 # ============================================================
-# ABOUT
+# FOOTER
 # ============================================================
 
-elif page == "ℹ️ About":
+st.divider()
 
-    st.header(
-        "ℹ️ About ModelGuard"
-    )
-
-    st.markdown(
-        """
-        ## 🛡️ ModelGuard — ML Model Risk Auditor
-
-        ModelGuard is an open-source machine learning
-        auditing tool designed to identify common data
-        and model risk indicators before deployment.
-
-        ### Audit Areas
-
-        - 🔎 Dataset Validation
-        - 🧹 Data Quality
-        - 🤖 Model Performance
-        - ⚖️ Group Performance
-        - 🔐 Potential Data Leakage
-        - 🔁 Reproducibility
-        - 🧠 Audit Summary
-        - 🚨 Risk Findings
-        - 📄 HTML Audit Reports
-
-        ### Baseline Model
-
-        ModelGuard uses a Logistic Regression baseline
-        with automated preprocessing for numerical and
-        categorical features.
-
-        ### Important Note
-
-        ModelGuard is a screening and auditing tool.
-
-        Its findings are indicators for further investigation
-        and should not be treated as proof that a model is
-        safe, unsafe, fair, unfair, or production-ready.
-        """
-    )
-
-    st.divider()
-
-    st.subheader(
-        "Technology Stack"
-    )
-
-    technology_data = pandas.DataFrame({
-        "Technology": [
-            "Python",
-            "Streamlit",
-            "Pandas",
-            "NumPy",
-            "Scikit-learn",
-            "Matplotlib",
-            "Seaborn"
-        ],
-        "Purpose": [
-            "Core programming language",
-            "Web application interface",
-            "Data processing",
-            "Numerical computing",
-            "Machine learning",
-            "Visualization",
-            "Visualization"
-        ]
-    })
-
-    st.dataframe(
-        technology_data,
-        width="stretch"
-    )
+st.markdown(
+    """
+    <div style="
+        text-align:center;
+        padding:20px 0 10px 0;
+        color:#6F7B8C;
+        font-size:12px;
+    ">
+        <strong>🛡️ ModelGuard</strong>
+        &nbsp;•&nbsp;
+        ML Model Risk Auditor
+        &nbsp;•&nbsp;
+        Open Source Project
+    </div>
+    """,
+    unsafe_allow_html=True
+)
